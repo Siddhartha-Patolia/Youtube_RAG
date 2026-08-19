@@ -1,5 +1,5 @@
 import os
-from youtube_transcript_api import YouTubeTranscriptApi
+from supadata import Supadata
 from urllib.parse import urlparse, parse_qs
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -23,6 +23,7 @@ class YTRag():
         self.vid_id = None
         self.vector_store_cache = {}
         self.embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
+        self.supadata = Supadata(api_key=os.getenv("SUPADATA_API_KEY"))
         self.llm = ChatGoogleGenerativeAI(
             model="gemini-3-flash-preview",
             temperature=0,
@@ -38,12 +39,14 @@ class YTRag():
     def get_transcript(self,url:str):
 
         vid_id = self.url_parser(url)
-        ytt = YouTubeTranscriptApi()
-        script = ytt.fetch(vid_id, languages=['en'])
+        transcript = self.supadata.transcript(
+            url=url,
+            lang="en",
+            text=True,
+            mode="auto",
+        )
 
-        combined_transcript = " ".join(sentences.text for sentences in script)
-
-        return combined_transcript, vid_id
+        return transcript.content, vid_id
 
     def vectorize_transcript(self,transcript: str, video_id:str):
 

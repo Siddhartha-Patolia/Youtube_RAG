@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>YouTube RAG Chat</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div id="app">
+    <div class="header">
+      <h1>YouTube RAG Chat</h1>
+      <button id="settings-toggle" title="Settings">⚙</button>
+    </div>
+
+    <div id="settings-panel" class="hidden">
+      <label for="api-url">Backend URL</label>
+      <input id="api-url" type="text" placeholder="http://127.0.0.1:8000" />
+      <button id="save-settings">Save</button>
+    </div>
+
+    <div class="row">
+      <input id="video-url" type="text" placeholder="YouTube URL" />
+      <button id="load-btn">Load</button>
+    </div>
+    <div id="video-status">No video loaded.</div>
+
+    <div id="chat-window"></div>
+
+    <div class="row">
+      <input id="question" type="text" placeholder="Ask something..." />
+      <button id="send-btn">Send</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
