@@ -1,7 +1,6 @@
 youtube-transcript-api
 langchain
 langchain-google-genai
-langchain-groq
 dash
 dash-bootstrap-components
 langchain-text-splitters

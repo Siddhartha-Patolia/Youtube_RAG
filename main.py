@@ -1,3 +1,4 @@
+import os
 from youtube_transcript_api import YouTubeTranscriptApi
 from urllib.parse import urlparse, parse_qs
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
@@ -5,9 +6,14 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
+from langchain_core.caches import InMemoryCache
+from langchain_core.globals import set_llm_cache
 from dotenv import load_dotenv
 
 load_dotenv()
+set_llm_cache(InMemoryCache())
+
+INDEX_DIR = "faiss_indexes"
 
 class YTRag():
 
@@ -15,7 +21,14 @@ class YTRag():
         self.vector_store = None
         self.retriever = None
         self.vid_id = None
-        self.llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
+        self.vector_store_cache = {}
+        self.embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
+        self.llm = ChatGoogleGenerativeAI(
+            model="gemini-3-flash-preview",
+            temperature=0,
+            max_output_tokens=512,
+            thinking_budget=0,
+        )
 
     def url_parser(self, url:str) -> str:
         video_id = parse_qs(urlparse(url).query)["v"][0]
@@ -28,9 +41,7 @@ class YTRag():
         ytt = YouTubeTranscriptApi()
         script = ytt.fetch(vid_id, languages=['en'])
 
-        combined_transcript = ""
-        for sentences in script:
-            combined_transcript += (sentences.text + " ")
+        combined_transcript = " ".join(sentences.text for sentences in script)
 
         return combined_transcript, vid_id
 
@@ -53,17 +64,37 @@ class YTRag():
         docs = splitter.split_documents([doc])
 
         # generate embeddings
-        embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
-        self.vector_store = FAISS.from_documents(docs,embeddings)
+        self.vector_store = FAISS.from_documents(docs, self.embeddings)
+        self._set_retriever()
+        self.vector_store.save_local(os.path.join(INDEX_DIR, video_id))
+        self.vector_store_cache[video_id] = self.vector_store
+
+    def _set_retriever(self):
         self.retriever = self.vector_store.as_retriever(
             search_type="mmr",
             search_kwargs={
                 "k": 5,
-                "fetch_k": 20
+                "fetch_k": 10
             }
-        )  
+        )
 
     def process_video(self, url:str):
+        video_id = self.url_parser(url)
+
+        if video_id in self.vector_store_cache:
+            self.vector_store = self.vector_store_cache[video_id]
+            self._set_retriever()
+            return
+
+        index_path = os.path.join(INDEX_DIR, video_id)
+        if os.path.isdir(index_path):
+            self.vector_store = FAISS.load_local(
+                index_path, self.embeddings, allow_dangerous_deserialization=True
+            )
+            self.vector_store_cache[video_id] = self.vector_store
+            self._set_retriever()
+            return
+
         combined_transcript, vid_id = self.get_transcript(url)
         self.vectorize_transcript(combined_transcript, vid_id)
 
@@ -78,28 +109,34 @@ class YTRag():
 
         return valid_chunks_list
 
-
-    def get_response(self, query:str):
-
-        valid_chunks_list = self.fetch_valid_chunks(query)
-
+    def _build_prompt(self, query:str, valid_chunks_list):
         prompt = PromptTemplate(
             template= "You are a helpful assistant. Answer the following query in a concide manner using the context available. In case of missing information, dont assume information that is not given in the context. Also take care of proper formatting. Query: {query}. \n Context: {valid_chunks_list}",
             input_variables=["query", "valid_chunks_list"]
         )
+        return prompt.invoke({"query":query, "valid_chunks_list":valid_chunks_list})
 
-        final_prompt = prompt.invoke({"query":query, "valid_chunks_list":valid_chunks_list})
+    def get_response(self, query:str):
+
+        valid_chunks_list = self.fetch_valid_chunks(query)
+        final_prompt = self._build_prompt(query, valid_chunks_list)
         res = self.llm.invoke(final_prompt)
         return res.content[0]["text"]
 
+    def get_response_stream(self, query:str):
 
+        valid_chunks_list = self.fetch_valid_chunks(query)
+        final_prompt = self._build_prompt(query, valid_chunks_list)
 
-
-
-
-
-
-
-
-
-    
+        accumulated = ""
+        for chunk in self.llm.stream(final_prompt):
+            content = chunk.content
+            if isinstance(content, str):
+                text = content
+            elif content and isinstance(content[0], dict):
+                text = content[0].get("text", "")
+            else:
+                text = ""
+            if text:
+                accumulated += text
+                yield accumulated
