@@ -4,12 +4,30 @@
   "version": "1.0.0",
   "description": "Ask questions about the YouTube video you're currently watching.",
   "action": {
-    "default_popup": "popup.html"
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
-  "permissions": ["activeTab", "storage"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "permissions": ["activeTab", "storage", "sidePanel"],
   "host_permissions": [
     "http://127.0.0.1:8000/*",
     "http://localhost:8000/*",
-    "https://*.run.app/*"
+    "https://*.run.app/*",
+    "https://www.youtube.com/*"
   ]
 }

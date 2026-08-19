@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = "http://127.0.0.1:8000";
+const DEFAULT_API_URL = "https://yt-rag-477224356188.asia-south2.run.app";
 
 const state = {
   apiUrl: DEFAULT_API_URL,
@@ -18,10 +18,63 @@ const el = {
   sendBtn: document.getElementById("send-btn"),
 };
 
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// Minimal markdown -> HTML: bold, italics, bullet/numbered lists, paragraphs.
+function renderMarkdown(text) {
+  const lines = escapeHtml(text).split("\n");
+  const htmlParts = [];
+  let listItems = [];
+  let listTag = null;
+
+  function flushList() {
+    if (listItems.length) {
+      htmlParts.push(`<${listTag}>${listItems.join("")}</${listTag}>`);
+      listItems = [];
+      listTag = null;
+    }
+  }
+
+  function inline(s) {
+    return s
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*(?!\*)(.+?)\*(?!\*)/g, "$1<em>$2</em>");
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const bulletMatch = line.match(/^[*-]\s+(.*)/);
+    const numberedMatch = line.match(/^\d+\.\s+(.*)/);
+
+    if (bulletMatch) {
+      if (listTag !== "ul") { flushList(); listTag = "ul"; }
+      listItems.push(`<li>${inline(bulletMatch[1])}</li>`);
+    } else if (numberedMatch) {
+      if (listTag !== "ol") { flushList(); listTag = "ol"; }
+      listItems.push(`<li>${inline(numberedMatch[1])}</li>`);
+    } else {
+      flushList();
+      if (line) htmlParts.push(`<p>${inline(line)}</p>`);
+    }
+  }
+  flushList();
+
+  return htmlParts.join("");
+}
+
 function addBubble(role, text) {
   const bubble = document.createElement("div");
   bubble.className = `bubble ${role}`;
-  bubble.textContent = text;
+  if (role === "assistant") {
+    bubble.innerHTML = renderMarkdown(text);
+  } else {
+    bubble.textContent = text;
+  }
   el.chatWindow.appendChild(bubble);
   el.chatWindow.scrollTop = el.chatWindow.scrollHeight;
   return bubble;
@@ -101,13 +154,13 @@ async function sendMessage() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let answer = "";
-    assistantBubble.textContent = "";
+    assistantBubble.innerHTML = "";
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       answer += decoder.decode(value, { stream: true });
-      assistantBubble.textContent = answer;
+      assistantBubble.innerHTML = renderMarkdown(answer);
       el.chatWindow.scrollTop = el.chatWindow.scrollHeight;
     }
   } catch (e) {

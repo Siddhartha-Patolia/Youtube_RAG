@@ -1,13 +1,22 @@
+html, body {
+  height: 100%;
+}
+
 body {
-  width: 360px;
+  width: 100%;
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 13px;
   color: #222;
+  box-sizing: border-box;
 }
 
 #app {
   padding: 10px;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
@@ -51,6 +60,7 @@ body {
   display: flex;
   gap: 6px;
   margin: 6px 0;
+  flex-shrink: 0;
 }
 
 input[type="text"] {
@@ -83,7 +93,8 @@ button:disabled {
 }
 
 #chat-window {
-  height: 260px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   border: 1px solid #eee;
   border-radius: 8px;
@@ -104,6 +115,23 @@ button:disabled {
   background: #007bff;
   color: white;
   margin-left: auto;
+}
+
+.bubble.assistant p,
+.bubble.assistant ul,
+.bubble.assistant ol {
+  margin: 0 0 6px 0;
+}
+
+.bubble.assistant ul,
+.bubble.assistant ol {
+  padding-left: 18px;
+}
+
+.bubble.assistant p:last-child,
+.bubble.assistant ul:last-child,
+.bubble.assistant ol:last-child {
+  margin-bottom: 0;
 }
 
 .bubble.assistant {
