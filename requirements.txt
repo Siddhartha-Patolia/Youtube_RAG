@@ -1,7 +1,12 @@
 youtube-transcript-api
 langchain
 langchain-google-genai
-dash
-dash-bootstrap-components
 langchain-text-splitters
 langchain-community
+faiss-cpu
+python-dotenv
+dash
+dash-bootstrap-components
+fastapi
+uvicorn[standard]
+pydantic

@@ -109,6 +109,23 @@ class YTRag():
 
         return valid_chunks_list
 
+    def _retriever_for(self, video_id:str):
+        vector_store = self.vector_store_cache.get(video_id)
+        if vector_store is None:
+            raise ValueError(f"video_id '{video_id}' has not been indexed yet")
+        return vector_store.as_retriever(
+            search_type="mmr",
+            search_kwargs={"k": 5, "fetch_k": 10}
+        )
+
+    def fetch_valid_chunks_for(self, video_id:str, query:str):
+        retriever = self._retriever_for(video_id)
+        valid_chunks = retriever.invoke(query)
+        return [
+            f"{i+1}. {chunk.page_content}"
+            for i, chunk in enumerate(valid_chunks)
+        ]
+
     def _build_prompt(self, query:str, valid_chunks_list):
         prompt = PromptTemplate(
             template= "You are a helpful assistant. Answer the following query in a concide manner using the context available. In case of missing information, dont assume information that is not given in the context. Also take care of proper formatting. Query: {query}. \n Context: {valid_chunks_list}",
@@ -128,6 +145,9 @@ class YTRag():
         valid_chunks_list = self.fetch_valid_chunks(query)
         final_prompt = self._build_prompt(query, valid_chunks_list)
 
+        yield from self._stream_llm(final_prompt)
+
+    def _stream_llm(self, final_prompt):
         accumulated = ""
         for chunk in self.llm.stream(final_prompt):
             content = chunk.content
@@ -140,3 +160,14 @@ class YTRag():
             if text:
                 accumulated += text
                 yield accumulated
+
+    def get_response_for(self, video_id:str, query:str):
+        valid_chunks_list = self.fetch_valid_chunks_for(video_id, query)
+        final_prompt = self._build_prompt(query, valid_chunks_list)
+        res = self.llm.invoke(final_prompt)
+        return res.content[0]["text"]
+
+    def get_response_stream_for(self, video_id:str, query:str):
+        valid_chunks_list = self.fetch_valid_chunks_for(video_id, query)
+        final_prompt = self._build_prompt(query, valid_chunks_list)
+        yield from self._stream_llm(final_prompt)
