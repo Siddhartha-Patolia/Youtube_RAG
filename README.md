@@ -29,7 +29,7 @@ The RAG core (`main.py`) is shared by three front ends:
 | [`main.py`](main.py) | Core RAG pipeline (`YTRag` class): transcript fetching, chunking, embedding, FAISS indexing/retrieval, and prompting/generation (one-shot and streaming, single-video and multi-video/`video_id`-scoped). No UI or transport code. |
 | [`app.py`](app.py) | Dash web UI for local use: page layout, chat rendering, and the callbacks that wire buttons to `YTRag`. Streams responses via a background thread. |
 | [`api.py`](api.py) | FastAPI backend exposing `YTRag` over HTTP (`/videos`, `/ask`, `/ask/stream`, `/health`) for the Chrome extension or any other remote client. |
-| [`extension/`](extension) | Chrome extension (Manifest V3): a popup UI that auto-detects the YouTube video in your current tab and calls the FastAPI backend to load it and chat with it. |
+| [`extension/`](extension) | Chrome extension (Manifest V3): a side panel UI that auto-detects the YouTube video in your current tab and calls the FastAPI backend to load it and chat with it. |
 | [`Dockerfile`](Dockerfile) | Container image for deploying `api.py` to Google Cloud Run. |
 | [`requirements.txt`](requirements.txt) | Python dependencies, shared by `app.py` and `api.py`. |
 | [`.env`](.env) *(not committed)* | Holds `GOOGLE_API_KEY` (Gemini) and `SUPADATA_API_KEY` (transcript fetching). |
@@ -102,24 +102,46 @@ extension's fixed ID once it's published if you want to lock it down.
 
 ## `extension/` — the Chrome extension
 
-A Manifest V3 popup (`popup.html` / `popup.js` / `popup.css`, no build
-step):
+A Manifest V3 **side panel** (`sidepanel.html` / `sidepanel.js` /
+`sidepanel.css`, no build step) rather than a popup — it stays docked
+open until you close it, surviving outside clicks and tab switches
+instead of disappearing (and losing the chat) the moment you click
+elsewhere on the page.
 
+- `background.js` calls `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`
+  so clicking the toolbar icon opens the panel.
 - On open, reads the active tab's URL and pre-fills it if it looks like a
-  YouTube watch page.
+  YouTube watch page. This needs a persistent `https://www.youtube.com/*`
+  host permission rather than the transient `activeTab` grant — the side
+  panel API intercepts the toolbar-icon click before it reaches the usual
+  `activeTab`-granting event, so `activeTab` alone isn't reliable here.
+  (This auto-fill only runs once, when the panel opens — switching to a
+  different video's tab while the panel stays docked open doesn't
+  refresh it; paste the URL manually in that case.)
 - **Load** calls `POST /videos` on the configured backend.
 - Asking a question calls `POST /ask/stream` and renders the answer into
-  the chat bubble incrementally as it streams in.
+  the chat bubble incrementally as it streams in, running the streamed
+  markdown (bold, bullet/numbered lists) through a small renderer in
+  `sidepanel.js` so formatting displays properly instead of showing raw
+  `**`/`*` characters.
 - The backend URL is configurable via the ⚙ settings panel (stored with
-  `chrome.storage.sync`), defaulting to `http://127.0.0.1:8000` for local
-  testing against `api.py`. `manifest.json`'s `host_permissions` allow
-  localhost and any `*.run.app` origin — add another origin there (and
-  reload the extension) if you host the backend elsewhere.
+  `chrome.storage.sync`), defaulting to the deployed Cloud Run URL.
+  `manifest.json`'s `host_permissions` allow localhost, any `*.run.app`
+  origin, and `youtube.com` — add another origin there (and reload the
+  extension) if you host the backend elsewhere.
+- Icons (`extension/icons/`) are generated at 16/32/48/128px from a
+  source image with its background flood-filled to transparent, so the
+  toolbar icon blends in instead of showing a white box.
 
 Load it via `chrome://extensions` → Developer mode → **Load unpacked** →
-select the `extension/` folder.
+select the `extension/` folder. Since this is a personal-scale project,
+`api.py` has no per-user auth/rate limiting — everyone using this
+extension shares one backend and one API quota, so don't distribute it
+widely without adding that first.
 
 ## Deployment — Cloud Run
+
+Currently deployed at `https://yt-rag-477224356188.asia-south2.run.app`.
 
 `Dockerfile` packages `api.py` + `main.py` (see `.dockerignore` for what's
 excluded, e.g. `app.py` and the Dash-only pieces aren't needed in the
